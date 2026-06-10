@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: proctorcode
+    runtime: node
+    plan: free
+    region: oregon
+    # Install both workspaces and build the React app, then start the API which serves it.
+    buildCommand: npm install --prefix backend && npm install --prefix frontend && npm run build --prefix frontend
+    startCommand: npm start --prefix backend
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_VERSION
+        value: "24.13.0"
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
