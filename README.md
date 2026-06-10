@@ -4,6 +4,18 @@ An **AI-proctored coding assessment platform**. Candidates take timed coding tes
 in a locked-down, monitored environment while administrators author tests and review
 detailed integrity reports.
 
+## 🔗 Live demo
+
+**https://proctorcode.onrender.com**
+
+| Role | Email | Password |
+|------|-------|----------|
+| Admin | `admin@proctorcode.dev` | `admin123` |
+| Candidate | `candidate@proctorcode.dev` | `test123` |
+
+> Hosted on Render's free tier — the first request may take ~30–60s while the instance
+> wakes up. Allow the camera prompt on the exam screen for AI gaze tracking.
+
 Two roles, two experiences:
 
 - **Administrator** — create/manage tests, view every session and its integrity report.
