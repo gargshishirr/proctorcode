@@ -5,7 +5,8 @@ services:
     plan: free
     region: oregon
     # Install both workspaces and build the React app, then start the API which serves it.
-    buildCommand: npm install --prefix backend && npm install --prefix frontend && npm run build --prefix frontend
+    # --include=dev is required because NODE_ENV=production would otherwise skip Vite (a devDependency).
+    buildCommand: npm install --prefix backend && npm install --prefix frontend --include=dev && npm run build --prefix frontend
     startCommand: npm start --prefix backend
     healthCheckPath: /api/health
     autoDeploy: true
