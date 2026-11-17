@@ -8,13 +8,33 @@ const AWAY_FRAMES = 3; // consecutive bad frames before flagging gaze
 const NOFACE_FRAMES = 3;
 const COOLDOWN = 5000; // ms minimum between same-type camera violations
 
+// Pick the TensorFlow.js backend ourselves: WebGL when the browser has it, otherwise the plain
+// CPU backend. (The WASM backend is never used, so no .wasm files are fetched.)
+async function pickBackend() {
+  const { tf } = faceapi;
+  let webgl = false;
+  try {
+    const canvas = document.createElement('canvas');
+    webgl = Boolean(canvas.getContext('webgl2') || canvas.getContext('webgl'));
+  } catch {
+    webgl = false;
+  }
+  if (!(webgl && (await tf.setBackend('webgl').catch(() => false)))) await tf.setBackend('cpu');
+  await tf.ready();
+}
+
 let modelsPromise = null;
 function loadModels() {
   if (!modelsPromise) {
-    modelsPromise = Promise.all([
-      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
-      faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
-    ]);
+    modelsPromise = pickBackend().then(() =>
+      Promise.all([
+        faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+        faceapi.nets.faceLandmark68Net.loadFromUri(MODEL_URL),
+      ])
+    );
+    modelsPromise.catch(() => {
+      modelsPromise = null; // allow a retry next time
+    });
   }
   return modelsPromise;
 }
@@ -194,8 +214,8 @@ export default function WebcamProctor({ active, onViolation, onStatusChange }) {
         )}
       </div>
       <div style={{ marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-        <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#9aa0b4' }}>
-          <Icon name="eye" size={14} /> Gaze &amp; face tracking
+        <span style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.78rem', color: '#9aa0b4' }} title="Face checks run in this browser. No video or images are uploaded.">
+          <Icon name="eye" size={14} /> Video stays on this device
         </span>
         <span className={`chip ${statusMeta.chip}`}>{statusMeta.label}</span>
       </div>

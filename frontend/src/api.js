@@ -1,37 +1,53 @@
-import axios from 'axios';
+// Tiny JSON client for the ProctorCode API.
+// The session lives in an HttpOnly cookie, so no token is ever stored in JavaScript.
 
-const api = axios.create({
-  baseURL: '/api',
-  headers: { 'Content-Type': 'application/json' },
-});
-
-const TOKEN_KEY = 'proctorcode_token';
-
-export function getToken() {
-  return localStorage.getItem(TOKEN_KEY);
-}
-export function setToken(token) {
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
-}
-
-api.interceptors.request.use((cfg) => {
-  const token = getToken();
-  if (token) cfg.headers.Authorization = `Bearer ${token}`;
-  return cfg;
-});
-
-api.interceptors.response.use(
-  (res) => res,
-  (err) => {
-    // Surface a clean message to callers.
-    const message =
-      err.response?.data?.error ||
-      err.response?.statusText ||
-      err.message ||
-      'Network error';
-    return Promise.reject(new Error(message));
+export class ApiError extends Error {
+  constructor(message, status, data) {
+    super(message);
+    this.status = status;
+    this.data = data;
   }
-);
+}
+
+let onUnauthorized = null;
+/** Called when the server says the session is gone (expired, revoked, signed out elsewhere). */
+export function setUnauthorizedHandler(fn) {
+  onUnauthorized = fn;
+}
+
+async function request(method, path, body) {
+  let res;
+  try {
+    res = await fetch(`/api${path}`, {
+      method,
+      credentials: 'same-origin',
+      headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+  } catch {
+    throw new ApiError("Can't reach the server. Check your connection and try again.", 0, null);
+  }
+  const text = await res.text();
+  let data = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = null;
+    }
+  }
+  if (!res.ok) {
+    if (res.status === 401 && onUnauthorized && !path.startsWith('/auth/')) onUnauthorized();
+    throw new ApiError(data?.error || res.statusText || 'Request failed', res.status, data);
+  }
+  return { data, status: res.status };
+}
+
+const api = {
+  get: (path) => request('GET', path),
+  post: (path, body = {}) => request('POST', path, body),
+  put: (path, body = {}) => request('PUT', path, body),
+  delete: (path) => request('DELETE', path),
+};
 
 export default api;

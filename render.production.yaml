@@ -1,0 +1,33 @@
+# ProctorCode for real use: a paid plan with a persistent disk, so data survives restarts and deploys.
+# How to use: Render → New → Blueprint → pick this repo → set "Blueprint path" to render.production.yaml.
+# Notes:
+# - Disks need a paid instance type, and a service with a disk has a short downtime on each deploy.
+# - The SQLite file lives at $DATA_DIR/app.db. Render snapshots disks daily; also keep your own backups.
+# - No DEMO_MODE here: only invited candidates can sign up.
+services:
+  - type: web
+    name: proctorcode
+    runtime: node
+    plan: starter
+    region: oregon
+    buildCommand: npm ci --prefix backend && npm ci --prefix frontend --include=dev && npm run build --prefix frontend
+    startCommand: npm start --prefix backend
+    healthCheckPath: /api/health
+    autoDeploy: true
+    disk:
+      name: proctorcode-data
+      mountPath: /var/data
+      sizeGB: 1
+    envVars:
+      - key: NODE_VERSION
+        value: "24.13.0"
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATA_DIR
+        value: /var/data
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false

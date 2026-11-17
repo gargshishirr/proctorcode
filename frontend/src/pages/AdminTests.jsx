@@ -4,6 +4,7 @@ import Icon from '../components/Icon';
 import TestFormModal from '../components/TestFormModal';
 import Modal from '../components/Modal';
 import { useToast } from '../context/ToastContext';
+import ReadOnlyNote, { useReadOnly } from '../components/ReadOnlyNote';
 import { formatDate, languageLabel } from '../utils';
 
 export default function AdminTests() {
@@ -13,6 +14,8 @@ export default function AdminTests() {
   const [editing, setEditing] = useState(null); // test object or {} for new
   const [deleting, setDeleting] = useState(null);
   const toast = useToast();
+  const readOnly = useReadOnly();
+  const ro = readOnly ? { disabled: true, title: 'Read-only demo' } : {};
 
   const load = () => {
     setLoading(true);
@@ -66,11 +69,12 @@ export default function AdminTests() {
           <h1>Tests</h1>
           <div className="sub">Create and manage coding assessments.</div>
         </div>
-        <button className="btn btn-primary" onClick={() => setEditing({})}>
+        <button className="btn btn-primary" onClick={() => setEditing({})} {...ro}>
           <Icon name="plus" size={16} /> New test
         </button>
       </div>
 
+      <ReadOnlyNote />
       {error && <div className="alert alert-error"><Icon name="alert" size={16} /> {error}</div>}
 
       {loading ? (
@@ -79,7 +83,7 @@ export default function AdminTests() {
         <div className="card empty">
           <div className="empty-icon">🧩</div>
           <p>No tests yet.</p>
-          <button className="btn btn-primary" onClick={() => setEditing({})}><Icon name="plus" size={16} /> Create your first test</button>
+          <button className="btn btn-primary" onClick={() => setEditing({})} {...ro}><Icon name="plus" size={16} /> Create your first test</button>
         </div>
       ) : (
         <div className="grid-3">
@@ -102,9 +106,9 @@ export default function AdminTests() {
               <div className="faint" style={{ fontSize: '0.76rem' }}>Created {formatDate(t.created_at)}</div>
               <hr className="hr" />
               <div className="row" style={{ gap: 8 }}>
-                <button className="btn btn-ghost btn-sm" onClick={() => setEditing(t)}><Icon name="edit" size={14} /> Edit</button>
-                <button className="btn btn-ghost btn-sm" onClick={() => toggleActive(t)}>{t.is_active ? 'Deactivate' : 'Activate'}</button>
-                <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto', color: 'var(--danger)' }} onClick={() => setDeleting(t)}>
+                <button className="btn btn-ghost btn-sm" onClick={() => setEditing(t)} {...ro}><Icon name="edit" size={14} /> Edit</button>
+                <button className="btn btn-ghost btn-sm" onClick={() => toggleActive(t)} {...ro}>{t.is_active ? 'Deactivate' : 'Activate'}</button>
+                <button className="btn btn-ghost btn-sm" style={{ marginLeft: 'auto', color: 'var(--danger)' }} onClick={() => setDeleting(t)} aria-label={`Delete ${t.title}`} {...ro}>
                   <Icon name="trash" size={14} />
                 </button>
               </div>

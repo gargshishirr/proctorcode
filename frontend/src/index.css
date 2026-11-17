@@ -302,3 +302,18 @@ table.tbl tbody tr:hover { background: var(--surface-2); }
 
 kbd { font-family: var(--mono); font-size: 0.78rem; background: #eef0f4; border: 1px solid var(--border-strong); border-bottom-width: 2px; border-radius: 5px; padding: 1px 6px; }
 .hr { height: 1px; background: var(--border); border: none; margin: 4px 0; }
+
+/* ---------- Demo & access ---------- */
+.demo-banner {
+  background: #fff7e6; color: #7c4a03; border-bottom: 1px solid #f5dcae;
+  font-size: 0.84rem; padding: 7px 24px; text-align: center;
+}
+.demo-box { background: var(--surface-2); border: 1px dashed var(--border-strong); border-radius: var(--radius-sm); padding: 14px; }
+a.avatar:hover { text-decoration: none; box-shadow: 0 0 0 3px var(--primary-soft); }
+.copy-box { display: flex; gap: 8px; align-items: center; }
+.copy-box .input { font-family: var(--mono); font-size: 0.82rem; }
+.consent-list { margin: 0; padding-left: 18px; font-size: 0.88rem; }
+.consent-list li { margin-bottom: 6px; }
+.check-row { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; font-size: 0.9rem; }
+.check-row input { width: 16px; height: 16px; margin-top: 2px; flex-shrink: 0; }
+code { font-family: var(--mono); font-size: 0.85em; }

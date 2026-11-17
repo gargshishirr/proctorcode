@@ -59,7 +59,7 @@ export default function TestFormModal({ initial, onClose, onSave }) {
 
         <div className="field">
           <label className="label">Test title</label>
-          <input className="input" value={form.title} onChange={set('title')} placeholder="e.g. Two Sum" />
+          <input className="input" value={form.title} onChange={set('title')} placeholder="e.g. Two Sum" maxLength={200} />
         </div>
 
         <div className="grid-2">
@@ -71,7 +71,7 @@ export default function TestFormModal({ initial, onClose, onSave }) {
           </div>
           <div className="field">
             <label className="label">Duration (minutes)</label>
-            <input className="input" type="number" min="1" value={form.duration_minutes} onChange={set('duration_minutes')} />
+            <input className="input" type="number" min="1" max="480" value={form.duration_minutes} onChange={set('duration_minutes')} />
           </div>
         </div>
 

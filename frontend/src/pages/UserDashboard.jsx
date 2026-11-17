@@ -4,14 +4,9 @@ import api from '../api';
 import Icon from '../components/Icon';
 import Modal from '../components/Modal';
 import { useToast } from '../context/ToastContext';
+import { useAuth } from '../context/AuthContext';
+import ProctoringConsent from '../components/ProctoringConsent';
 import { languageLabel } from '../utils';
-
-const rules = [
-  { icon: 'camera', text: 'Your webcam stays on for AI face & gaze monitoring.' },
-  { icon: 'monitor', text: 'Switching tabs, windows or leaving fullscreen is recorded.' },
-  { icon: 'clipboard', text: 'Copy, cut and paste actions are flagged.' },
-  { icon: 'gauge', text: 'Each flag lowers your live integrity score.' },
-];
 
 export default function UserDashboard() {
   const [tests, setTests] = useState([]);
@@ -20,6 +15,8 @@ export default function UserDashboard() {
   const [error, setError] = useState('');
   const [consentTest, setConsentTest] = useState(null);
   const [starting, setStarting] = useState(false);
+  const [agreed, setAgreed] = useState(false);
+  const { config } = useAuth();
   const toast = useToast();
   const navigate = useNavigate();
 
@@ -98,11 +95,11 @@ export default function UserDashboard() {
                     <button className="btn btn-primary btn-sm" onClick={() => navigate(`/test/${prev.id}`)}>
                       <Icon name="play" size={14} /> Resume
                     </button>
-                  ) : (
-                    <button className="btn btn-primary btn-sm" onClick={() => setConsentTest(t)}>
-                      <Icon name="play" size={14} /> Start test
+                  ) : (!prev || config.demo) ? (
+                    <button className="btn btn-primary btn-sm" onClick={() => { setAgreed(false); setConsentTest(t); }}>
+                      <Icon name="play" size={14} /> {prev ? 'Try again' : 'Start test'}
                     </button>
-                  )}
+                  ) : null}
                   {prev && prev.status !== 'in_progress' && (
                     <Link to={`/attempt/${prev.id}`} className="btn btn-ghost btn-sm">View result</Link>
                   )}
@@ -121,9 +118,9 @@ export default function UserDashboard() {
           footer={
             <>
               <button className="btn btn-ghost" onClick={() => setConsentTest(null)} disabled={starting}>Cancel</button>
-              <button className="btn btn-primary" onClick={begin} disabled={starting}>
+              <button className="btn btn-primary" onClick={begin} disabled={starting || !agreed}>
                 {starting ? <span className="spinner" /> : <Icon name="shield" size={16} />}
-                I understand, start
+                Start the test
               </button>
             </>
           }
@@ -131,18 +128,13 @@ export default function UserDashboard() {
           <div className="stack" style={{ gap: 14 }}>
             <div className="alert alert-warn">
               <Icon name="alert" size={16} />
-              This is a proctored assessment. Please ensure you are alone in a well-lit room with your camera enabled.
+              This is a proctored test. Sit alone in a well-lit room with your camera on.
             </div>
-            <div className="stack" style={{ gap: 10 }}>
-              {rules.map((r) => (
-                <div key={r.text} style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
-                  <span style={{ width: 30, height: 30, borderRadius: 8, background: 'var(--primary-soft)', color: 'var(--primary-700)', display: 'grid', placeItems: 'center', flexShrink: 0 }}>
-                    <Icon name={r.icon} size={15} />
-                  </span>
-                  <span style={{ fontSize: '0.9rem' }}>{r.text}</span>
-                </div>
-              ))}
-            </div>
+            <ProctoringConsent />
+            <label className="check-row">
+              <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
+              <span>I understand and agree to be proctored for this test.</span>
+            </label>
           </div>
         </Modal>
       )}
