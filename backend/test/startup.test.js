@@ -45,6 +45,25 @@ describe('production startup without ADMIN_* (existing Render service) stays up 
   });
 });
 
+describe('the existing Render service right after this deploy (DEMO_MODE on, no ADMIN_*)', () => {
+  let srv;
+  after(() => srv?.stop());
+
+  test('serves the demo without crashing', async () => {
+    srv = await startServer({ ...PROD, DEMO_MODE: 'true' });
+    assert.ok(srv.baseUrl, srv.output);
+    assert.match(srv.output(), /No admin account yet/);
+    assert.match(srv.output(), /Public demo mode is ON/);
+    const visitor = new Client(srv.baseUrl);
+    assert.equal((await visitor.get('/api/config')).data.demo, true);
+    assert.equal((await visitor.post('/api/demo/candidate', {})).status, 201);
+    const demoAdmin = new Client(srv.baseUrl);
+    assert.equal((await demoAdmin.post('/api/demo/admin', {})).status, 200);
+    assert.equal((await demoAdmin.get('/api/admin/attempts')).status, 200);
+    assert.equal((await demoAdmin.post('/api/tests', { title: 'x' })).status, 403);
+  });
+});
+
 describe('production mode with a proper admin', () => {
   let srv;
   after(() => srv?.stop());

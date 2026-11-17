@@ -88,7 +88,7 @@ npm run frontend  # app on http://localhost:5173 (second terminal)
 
 ## Troubleshooting
 
-- **"ProctorCode will not start" in the logs:** a setting is unsafe. The log line says which one.
+- **Deploy failed, "ProctorCode will not start" in the logs:** a setting is unsafe or missing. The log line says which one. Render keeps the previous version running until you fix it.
 - **Login page says "no admin yet":** set `ADMIN_EMAIL` and `ADMIN_PASSWORD`, then redeploy.
 - **"Too many failed sign-in attempts":** wait 15 minutes, or sign in from another network.
 - **Camera blocked:** allow the camera in the browser's site settings, and use HTTPS.
