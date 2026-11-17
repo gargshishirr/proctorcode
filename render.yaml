@@ -1,12 +1,16 @@
+# ProctorCode: the free public demo on Render.
+# - DEMO_MODE=true shows "Try as candidate" and "Try as admin (read-only)", turns sign-up off,
+#   and resets demo data every few hours.
+# - The free plan's disk is temporary: ALL data is lost on every restart, sleep and deploy.
+# - For real use with saved data, use render.production.yaml (paid plan + persistent disk).
 services:
   - type: web
     name: proctorcode
     runtime: node
     plan: free
     region: oregon
-    # Install both workspaces and build the React app, then start the API which serves it.
-    # --include=dev is required because NODE_ENV=production would otherwise skip Vite (a devDependency).
-    buildCommand: npm install --prefix backend && npm install --prefix frontend --include=dev && npm run build --prefix frontend
+    # --include=dev is needed because NODE_ENV=production would otherwise skip Vite (a devDependency).
+    buildCommand: npm ci --prefix backend && npm ci --prefix frontend --include=dev && npm run build --prefix frontend
     startCommand: npm start --prefix backend
     healthCheckPath: /api/health
     autoDeploy: true
@@ -17,3 +21,11 @@ services:
         value: production
       - key: JWT_SECRET
         generateValue: true
+      - key: DEMO_MODE
+        value: "true"
+      # Your own admin login (password: 12+ characters). Render asks for these when the Blueprint
+      # is created. On an existing service, add them in Dashboard → proctorcode → Environment.
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false

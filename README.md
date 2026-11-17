@@ -1,190 +1,158 @@
 # 🛡️ ProctorCode
 
-An **AI-proctored coding assessment platform**. Candidates take timed coding tests
-in a locked-down, monitored environment while administrators author tests and review
-detailed integrity reports.
+An **AI-proctored coding test platform**. Candidates take timed coding tests in a monitored
+browser window. Admins create tests, invite candidates and review integrity reports.
+
+📘 **New here? Read the short [GUIDE.md](GUIDE.md)** — how to use it, deploy it and keep it safe.
 
 ## 🔗 Live demo
 
 **https://proctorcode.onrender.com**
 
-| Role | Email | Password |
-|------|-------|----------|
-| Admin | `admin@proctorcode.dev` | `admin123` |
-| Candidate | `candidate@proctorcode.dev` | `test123` |
+There are no shared passwords. On the sign-in page, use the demo buttons:
 
-> Hosted on Render's free tier — the first request may take ~30–60s while the instance
-> wakes up. Allow the camera prompt on the exam screen for AI gaze tracking.
+- **Try as candidate** — makes a throwaway candidate account just for you. Take a test with your webcam.
+- **Try as admin (read-only)** — look at every demo session and report. Changes are turned off.
 
-Two roles, two experiences:
-
-- **Administrator** — create/manage tests, view every session and its integrity report.
-- **Test taker (candidate)** — take proctored coding tests and view personal results.
+> - Demo data is shared and resets every few hours. Don't enter real personal data.
+> - Hosted on Render's free plan: the first visit can take 30–60 s while it wakes up.
 
 ---
 
 ## ✨ Features
 
-### AI / proctoring
-- **Webcam gaze & face tracking** (face-api.js) — flags *looking away*, *no face*, and *multiple faces*.
-- **Tab-switch detection** (Page Visibility API).
-- **Window / monitor switch detection** (window blur).
-- **Clipboard guard** — copy, cut and paste are detected and scored.
-- **Fullscreen enforcement** — leaving fullscreen is flagged.
-- **Dev-tools / print / right-click** attempts are blocked & recorded.
-- **Live integrity score** — every violation lowers the score in real time; a session that
-  hits 0 is automatically terminated.
+### Proctoring
+- **Webcam face & gaze checks** (face-api.js) — flags *looking away*, *no face* and *multiple faces*.
+  Runs in the browser; **no video or images are uploaded**.
+- **Tab / window switch**, **fullscreen exit**, **copy / cut / paste**, **dev-tools / print / right-click** detection.
+- **Live integrity score** — each flag lowers it; at 0 the server ends the attempt.
+- Clear consent screen that says what is checked and what is stored.
 
 ### Platform
-- JWT authentication with `admin` / `user` roles.
-- Admin dashboard with stats, test CRUD, and full session reports (violation timeline + submitted code).
-- Candidate dashboard with a consent step, in-browser **Monaco** code editor, countdown timer,
-  autosave, and an optional JavaScript runner (sandboxed Web Worker).
-- Clean, responsive UI.
+- Admin: test editor (Markdown + starter code), sessions list, full reports, invite links, candidate removal.
+- Candidate: Monaco code editor, countdown timer (enforced by the server), autosave, a sandboxed
+  JavaScript runner, and a results page.
+- **Invite-only sign-up** by default (open sign-up is an opt-in switch).
+- **Public demo mode** (`DEMO_MODE=true`) with "Try" buttons and a read-only demo admin.
+
+### Security
+- No default or public accounts. The admin comes from `ADMIN_EMAIL` / `ADMIN_PASSWORD`.
+- Production refuses to start with a weak admin password or a short `JWT_SECRET`.
+- HttpOnly + Secure + SameSite=Strict session cookie (no tokens in `localStorage`).
+- JWT pinned to HS256 with issuer/audience checks, plus server-side sessions, so logout and
+  password changes revoke old tokens.
+- bcrypt (cost 12), sign-in lockout without account enumeration, rate limits.
+- Same-origin checks against CSRF, strict security headers and CSP, no CORS.
+- Server-side role checks, owner-only attempts (no IDOR), attempts locked after submission.
 
 ---
 
 ## 🧱 Tech stack
 
-| Layer     | Tech                                                            |
-|-----------|----------------------------------------------------------------|
-| Frontend  | React + Vite, React Router, Monaco Editor, face-api.js, axios  |
-| Backend   | Node.js + Express, JWT, bcryptjs                               |
-| Database  | SQLite via Node's built-in `node:sqlite` (no native build)     |
+| Layer    | Tech                                                                  |
+|----------|-----------------------------------------------------------------------|
+| Frontend | React + Vite, React Router, Monaco Editor (self-hosted), face-api.js  |
+| Backend  | Node.js + Express 5, helmet, express-rate-limit, JWT, bcryptjs        |
+| Database | SQLite via Node's built-in `node:sqlite` (no native build)            |
 
 ---
 
 ## 📁 Structure
 
 ```
-coding-test-platform/
+proctorcode/
+├── GUIDE.md                  # short how-to: use, deploy, maintain
+├── render.yaml               # free public demo on Render
+├── render.production.yaml    # paid plan + persistent disk
 ├── backend/
 │   ├── src/
-│   │   ├── server.js          # Express app
-│   │   ├── db.js              # node:sqlite schema
-│   │   ├── seed.js            # demo admin + candidate + sample tests
-│   │   ├── config.js          # .env loader
-│   │   ├── middleware/auth.js # JWT + role guards
-│   │   └── routes/            # auth, tests, attempts, admin
-│   └── data/app.db            # created at runtime
+│   │   ├── server.js         # startup checks, admin bootstrap, demo reset, listen
+│   │   ├── app.js            # Express app, headers, static files
+│   │   ├── config.js         # env settings + production safety checks
+│   │   ├── db.js             # node:sqlite schema + upgrades
+│   │   ├── security.js       # CSP/headers, CSRF origin check, rate limits, lockout
+│   │   ├── middleware/auth.js# sessions, cookies, role guards
+│   │   ├── seedData.js       # admin from env, demo data, dev seed
+│   │   └── routes/           # auth, tests, attempts, admin, demo
+│   └── test/                 # node:test API tests
 └── frontend/
-    ├── public/models/         # face-api model weights
+    ├── public/models/        # face-api model weights
     └── src/
-        ├── pages/             # Login, Register, Admin*, User*, TakeTest…
-        ├── components/        # Navbar, WebcamProctor, Modal, Icon…
-        ├── hooks/useProctoring.js   # behavioural proctoring engine
-        └── context/           # Auth + Toast providers
+        ├── pages/            # Login, Register, Admin*, User*, TakeTest, Account
+        ├── components/       # Navbar, WebcamProctor, DemoButtons, Modal…
+        └── hooks/useProctoring.js
 ```
 
 ---
 
-## 🚀 Getting started
+## 🚀 Run locally
 
-### Prerequisites
-- **Node.js 22.5+** (uses the built-in `node:sqlite` module; Node 24 recommended).
+Needs **Node.js 22.13+** (Node 24 recommended).
 
-### 1. Install
 ```bash
-cd coding-test-platform
-npm run setup          # installs backend + frontend deps
+npm run setup     # install backend + frontend
+npm run seed      # sample tests + dev admin/candidate; prints freshly generated passwords
+npm run backend   # API on http://localhost:4000
+npm run frontend  # app on http://localhost:5173 (second terminal)
 ```
 
-### 2. Seed the database
-```bash
-npm run seed
-```
-
-### 3. Run (two terminals)
-```bash
-# terminal 1 — API on http://localhost:4000
-npm run backend
-
-# terminal 2 — app on http://localhost:5173
-npm run frontend
-```
-
-Open **http://localhost:5173**.
-
-> The frontend dev server proxies `/api` to the backend, so no CORS setup is needed.
-
-### Demo accounts
-| Role       | Email                       | Password   |
-|------------|-----------------------------|------------|
-| Admin      | `admin@proctorcode.dev`     | `admin123` |
-| Candidate  | `candidate@proctorcode.dev` | `test123`  |
-
-You can also self-register from the login screen (choose *Test taker* or *Administrator*).
-
----
-
-## 🎥 Using the proctored test
-
-1. Sign in as a candidate and click **Start test** → review the consent dialog.
-2. Click **Begin test in fullscreen** — this grants camera access and enters fullscreen
-   (both require a user click, so they happen here).
-3. Solve the problem in the editor. The right-hand **AI Proctor** panel shows the live
-   webcam feed and status; the **Activity monitor** lists violations as they happen.
-4. Submit when done — you're taken to your result with the final integrity score.
-
-> **Camera & HTTPS note:** browsers allow `getUserMedia` on `http://localhost`. If you host
-> this elsewhere, serve it over **HTTPS** or the webcam proctor will be blocked (it degrades
-> gracefully and logs a `camera_blocked` flag).
-
----
-
-## 🔌 API overview
-
-| Method | Endpoint                          | Role  | Purpose                          |
-|--------|-----------------------------------|-------|----------------------------------|
-| POST   | `/api/auth/register` `/login`     | —     | Auth                             |
-| GET    | `/api/tests`                      | both  | List tests (admin: all)          |
-| POST/PUT/DELETE | `/api/tests[/:id]`       | admin | Manage tests                     |
-| POST   | `/api/attempts`                   | user  | Start / resume an attempt        |
-| PUT    | `/api/attempts/:id/code`          | user  | Autosave code                    |
-| POST   | `/api/attempts/:id/violations`    | user  | Log a proctoring violation       |
-| POST   | `/api/attempts/:id/submit`        | user  | Submit / terminate               |
-| GET    | `/api/admin/stats` `/attempts`    | admin | Dashboard + integrity reports    |
+- `npm run seed` is for local development only. It refuses to run with `NODE_ENV=production`.
+- Optional settings live in `backend/.env` (copy `backend/.env.example`).
+- Production build locally: `npm run build` then `npm start` (everything on port 4000).
+- Checks: `npm test` (API tests) and `npm run build` (frontend). CI runs both on Node 22 and 24.
 
 ---
 
 ## ⚙️ Configuration
 
-Backend reads `backend/.env` (copied from `.env.example`):
-
-```
-PORT=4000
-JWT_SECRET=change-this-secret-in-production-please
-CLIENT_ORIGIN=http://localhost:5173
-```
+| Variable | What it does |
+|----------|--------------|
+| `JWT_SECRET` | Signs session tokens. 32+ random characters. Required in production. |
+| `ADMIN_EMAIL`, `ADMIN_PASSWORD` | The owner's admin account (created or updated on start). Password 12+ chars. |
+| `DEMO_MODE` | `true` = public demo: "Try" buttons, read-only demo admin, no sign-up, periodic reset. |
+| `DEMO_RESET_HOURS` | How often demo data resets (default 6). |
+| `DATA_DIR` / `DB_PATH` | Where the SQLite file lives (default `backend/data/app.db`). |
+| `PORT` | HTTP port (default 4000). |
+| `TRUST_PROXY` | Proxy hops to trust (automatic on Render). |
 
 ---
 
-## ☁️ Deploy to Render (single service)
+## ☁️ Deploy to Render
 
-This repo includes a `render.yaml` blueprint. One Node service builds the React app and
-serves it together with the API (so the webcam proctor gets HTTPS automatically).
+- **Free demo:** `render.yaml`. Set `ADMIN_EMAIL` and `ADMIN_PASSWORD` when Render asks.
+  The free disk is temporary, so **all data is lost on restart or deploy**.
+- **Real use:** `render.production.yaml` (paid plan + disk at `/var/data`). Data is kept.
 
-1. Push this repo to GitHub.
-2. In Render: **New → Blueprint**, connect the repo, and apply. Render reads `render.yaml`:
-   - **Build:** installs both workspaces and runs `vite build`.
-   - **Start:** `npm start --prefix backend` (Express serves `frontend/dist` + the API).
-   - `JWT_SECRET` is auto-generated; `NODE_VERSION` is pinned to 24 (required for `node:sqlite`).
-3. Open the resulting `https://<your-service>.onrender.com` URL.
+Step-by-step instructions are in [GUIDE.md](GUIDE.md#deploy-on-render).
 
-> Demo data (admin + candidate + sample tests) is **auto-seeded on first boot**.
-> The free plan uses an ephemeral disk, so data resets on redeploy — fine for a demo.
-> For persistent data, attach a Render Disk mounted at `backend/data`.
+---
 
-To run the production build locally:
-```bash
-npm run build      # build the React app
-npm start          # Express serves the build + API on http://localhost:4000
-```
+## 🔌 API overview
+
+| Method | Endpoint | Who | Purpose |
+|--------|----------|-----|---------|
+| GET | `/api/config` | anyone | Demo mode and sign-up mode |
+| POST | `/api/auth/register` `/login` `/logout` `/logout-all` | — | Sessions (cookie) |
+| GET | `/api/auth/session` `/me` | — / signed in | Current user |
+| POST | `/api/auth/password` | signed in | Change password |
+| POST | `/api/demo/candidate` `/admin` | demo only | Start a demo session |
+| GET | `/api/tests` | both | List tests (candidates: active only) |
+| POST/PUT/DELETE | `/api/tests[/:id]` | admin | Manage tests |
+| POST | `/api/attempts` | candidate | Start / resume an attempt |
+| GET | `/api/attempts/mine` `/:id` | candidate | Own attempts only |
+| PUT | `/api/attempts/:id/code` | candidate | Autosave |
+| POST | `/api/attempts/:id/violations` `/submit` | candidate | Flags / submit |
+| GET | `/api/admin/stats` `/attempts[/:id]` `/users` | admin | Dashboard and reports |
+| DELETE | `/api/admin/attempts/:id` `/users/:id` | admin | Remove a session / candidate |
+| GET/POST/DELETE | `/api/admin/invites[/:id]` | admin | Invite links |
+| GET/PUT | `/api/admin/settings` | admin | Open sign-up on/off |
+
+---
 
 ## 📝 Notes & limitations
-- The optional **Run** button executes only JavaScript/TypeScript in a sandboxed Web Worker
-  (3s timeout). Other languages are graded from the submitted source.
-- Proctoring heuristics are intentionally tuned to be informative rather than punitive;
-  thresholds live in `frontend/src/components/WebcamProctor.jsx` and
-  `frontend/src/hooks/useProctoring.js`.
-- For production: set a strong `JWT_SECRET`, serve over HTTPS, and tighten CORS in `server.js`.
+
+- **Run button:** JavaScript/TypeScript only. It runs in the candidate's own browser in a Web Worker
+  (no page, cookie or DOM access; 3 s limit). The server never executes candidate code.
+- **Proctoring is a deterrent, not proof.** Checks run in the candidate's browser, so a skilled
+  person can bypass them. Use the report as one signal and talk to the candidate.
+- Thresholds live in `frontend/src/components/WebcamProctor.jsx` and `frontend/src/hooks/useProctoring.js`.
