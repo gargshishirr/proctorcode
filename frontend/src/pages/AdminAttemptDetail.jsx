@@ -1,9 +1,12 @@
 import { useEffect, useState } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useNavigate } from 'react-router-dom';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import api from '../api';
 import Icon from '../components/Icon';
+import Modal from '../components/Modal';
+import ReadOnlyNote, { useReadOnly } from '../components/ReadOnlyNote';
+import { useToast } from '../context/ToastContext';
 import {
   formatDate, formatTime, integrityColor, integrityLabel,
   statusBadge, violationMeta, languageLabel,
@@ -14,6 +17,21 @@ export default function AdminAttemptDetail() {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const readOnly = useReadOnly();
+  const toast = useToast();
+  const navigate = useNavigate();
+
+  const deleteSession = async () => {
+    try {
+      await api.delete(`/admin/attempts/${id}`);
+      toast.success('Session deleted. The candidate can take the test again.');
+      navigate('/admin/attempts', { replace: true });
+    } catch (e) {
+      toast.error(e.message);
+      setConfirmDelete(false);
+    }
+  };
 
   useEffect(() => {
     api.get(`/admin/attempts/${id}`)
@@ -43,8 +61,21 @@ export default function AdminAttemptDetail() {
             {attempt.test_title} · {languageLabel(attempt.language)} · {attempt.candidate_email}
           </div>
         </div>
-        <span className={`badge ${sb.cls}`} style={{ fontSize: '0.85rem', padding: '7px 14px' }}>{sb.label}</span>
+        <div className="row" style={{ gap: 10, alignItems: 'center' }}>
+          <span className={`badge ${sb.cls}`} style={{ fontSize: '0.85rem', padding: '7px 14px' }}>{sb.label}</span>
+          <button
+            className="btn btn-ghost btn-sm"
+            style={{ color: 'var(--danger)' }}
+            onClick={() => setConfirmDelete(true)}
+            disabled={readOnly}
+            title={readOnly ? 'Read-only demo' : 'Delete this session (lets the candidate retake the test)'}
+          >
+            <Icon name="trash" size={14} /> Delete session
+          </button>
+        </div>
       </div>
+
+      <ReadOnlyNote />
 
       <div className="grid-2" style={{ alignItems: 'start' }}>
         {/* Integrity summary */}
@@ -131,6 +162,22 @@ export default function AdminAttemptDetail() {
           {attempt.code?.trim() ? attempt.code : '// (no code submitted)'}
         </pre>
       </div>
+
+      {confirmDelete && (
+        <Modal
+          title="Delete this session?"
+          subtitle="The code, score and flags are removed. The candidate can then take the test again."
+          onClose={() => setConfirmDelete(false)}
+          footer={
+            <>
+              <button className="btn btn-ghost" onClick={() => setConfirmDelete(false)}>Cancel</button>
+              <button className="btn btn-danger" onClick={deleteSession}><Icon name="trash" size={15} /> Delete</button>
+            </>
+          }
+        >
+          <p className="muted">This cannot be undone.</p>
+        </Modal>
+      )}
 
       {/* Problem reference */}
       <details className="card card-pad">

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
+import '../monacoSetup';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import api from '../api';
@@ -9,6 +10,7 @@ import Modal from '../components/Modal';
 import WebcamProctor from '../components/WebcamProctor';
 import useProctoring, { enterFullscreen, exitFullscreen } from '../hooks/useProctoring';
 import { useToast } from '../context/ToastContext';
+import ProctoringConsent from '../components/ProctoringConsent';
 import { integrityColor, violationMeta, languageLabel } from '../utils';
 
 const MONACO_LANG = {
@@ -48,6 +50,7 @@ export default function TakeTest() {
   const endRef = useRef(0);
   const autosaveRef = useRef(null);
   const finishedRef = useRef(false);
+  const workerRef = useRef(null);
 
   // ---- Load attempt ----
   useEffect(() => {
@@ -62,7 +65,9 @@ export default function TakeTest() {
         setCode(attempt.code || '');
         codeRef.current = attempt.code || '';
         setIntegrity(attempt.integrity_score);
-        const end = new Date(attempt.started_at).getTime() + test.duration_minutes * 60000;
+        // Use the server's deadline, corrected for any difference between the two clocks.
+        const offset = res.data.server_time ? new Date(res.data.server_time).getTime() - Date.now() : 0;
+        const end = new Date(attempt.deadline_at).getTime() - offset;
         endRef.current = end;
         setRemaining(Math.max(0, Math.round((end - Date.now()) / 1000)));
       })
@@ -72,17 +77,21 @@ export default function TakeTest() {
 
   // ---- Finalize (submit or terminate) ----
   const finalize = useCallback(
-    async (terminated, reason) => {
+    async (terminated, reason, { closedByServer = false } = {}) => {
       if (finishedRef.current) return;
       finishedRef.current = true;
       setSubmitting(true);
-      try {
-        await api.post(`/attempts/${attemptId}/submit`, { code: codeRef.current, terminated });
-      } catch {
-        /* best effort */
+      if (autosaveRef.current) clearTimeout(autosaveRef.current);
+      if (!closedByServer) {
+        try {
+          await api.post(`/attempts/${attemptId}/submit`, { code: codeRef.current, terminated });
+        } catch {
+          /* already closed on the server (time up / terminated) */
+        }
       }
       await exitFullscreen();
       if (terminated) toast.error(reason || 'Session terminated');
+      else if (reason) toast.info(reason);
       else toast.success('Test submitted successfully');
       navigate(`/attempt/${attemptId}`, { replace: true });
     },
@@ -95,15 +104,18 @@ export default function TakeTest() {
       if (finishedRef.current) return;
       const meta = violationMeta(type);
       setLog((l) => [{ id: Date.now() + Math.random(), type, severity, details, time: new Date(), label: meta.label, icon: meta.icon }, ...l].slice(0, 60));
-      api.post(`/attempts/${attemptId}/violations`, { type, severity, details })
+      api.post(`/attempts/${attemptId}/violations`, { type, details })
         .then((res) => {
-          const score = res.data.integrity_score;
-          setIntegrity(score);
-          if (score <= 0) finalize(true, 'Terminated: integrity score reached zero');
+          setIntegrity(res.data.integrity_score);
+          if (res.data.status === 'terminated') {
+            finalize(true, 'Terminated: integrity score reached zero', { closedByServer: true });
+          }
         })
-        .catch(() => {});
+        .catch((e) => {
+          if (e.status === 409) finalize(false, e.message, { closedByServer: true });
+        });
       if (type !== 'looking_away' && type !== 'right_click') {
-        toast.warn(`${meta.label} detected`, 2500);
+        toast.warn(/detected$/i.test(meta.label) ? meta.label : `${meta.label} detected`, 2500);
       }
     },
     [attemptId, finalize, toast]
@@ -137,6 +149,16 @@ export default function TakeTest() {
     return () => window.removeEventListener('beforeunload', handler);
   }, [entered]);
 
+  // ---- Keep the session fresh during long, quiet stretches of thinking ----
+  useEffect(() => {
+    if (!entered) return;
+    const id = setInterval(() => api.get('/auth/me').catch(() => {}), 10 * 60_000);
+    return () => clearInterval(id);
+  }, [entered]);
+
+  // ---- Stop a running sandbox when leaving the page ----
+  useEffect(() => () => workerRef.current?.terminate(), []);
+
   // ---- Code autosave (debounced) ----
   const onChangeCode = (value) => {
     const v = value ?? '';
@@ -144,7 +166,9 @@ export default function TakeTest() {
     codeRef.current = v;
     if (autosaveRef.current) clearTimeout(autosaveRef.current);
     autosaveRef.current = setTimeout(() => {
-      api.put(`/attempts/${attemptId}/code`, { code: codeRef.current }).catch(() => {});
+      api.put(`/attempts/${attemptId}/code`, { code: codeRef.current }).catch((e) => {
+        if (e.status === 409) finalize(false, e.message, { closedByServer: true });
+      });
     }, 1500);
   };
 
@@ -171,13 +195,19 @@ export default function TakeTest() {
       try { ${codeRef.current}\n self.postMessage({ kind: 'done' }); }
       catch (e) { self.postMessage({ kind: 'error', text: e.message }); self.postMessage({ kind: 'done' }); }
     `;
+    // The code runs only in this browser, in a Web Worker: no page, cookies or DOM access, 3 s limit.
     let worker;
+    const url = URL.createObjectURL(new Blob([src], { type: 'application/javascript' }));
     try {
-      worker = new Worker(URL.createObjectURL(new Blob([src], { type: 'application/javascript' })));
+      workerRef.current?.terminate();
+      worker = new Worker(url);
+      workerRef.current = worker;
     } catch {
       setRunOutput([{ kind: 'error', text: 'Unable to start the sandbox.' }]);
       setRunning(false);
       return;
+    } finally {
+      URL.revokeObjectURL(url);
     }
     const out = [];
     const timeout = setTimeout(() => {
@@ -185,6 +215,14 @@ export default function TakeTest() {
       setRunOutput([...out, { kind: 'error', text: 'Execution timed out (3s).' }]);
       setRunning(false);
     }, 3000);
+    // Syntax errors and uncaught errors in the candidate's code end up here.
+    worker.onerror = (e) => {
+      e.preventDefault();
+      clearTimeout(timeout);
+      worker.terminate();
+      setRunOutput([...out, { kind: 'error', text: e.message || 'Error while running your code.' }]);
+      setRunning(false);
+    };
     worker.onmessage = (e) => {
       const d = e.data;
       if (d.kind === 'done') {
@@ -224,9 +262,13 @@ export default function TakeTest() {
             {languageLabel(test.language)} · {test.duration_minutes} minutes
           </p>
           <div style={{ textAlign: 'left', background: '#12141c', border: '1px solid #262a38', borderRadius: 12, padding: 16, margin: '18px 0', fontSize: '0.88rem', color: '#cdd2e1' }}>
-            <div style={{ display: 'flex', gap: 9, marginBottom: 9 }}><Icon name="camera" size={16} color="#a5b4fc" /> Camera turns on for AI face &amp; gaze tracking.</div>
+            <div style={{ display: 'flex', gap: 9, marginBottom: 9 }}><Icon name="camera" size={16} color="#a5b4fc" /> Your camera turns on for face &amp; gaze checks. The video stays on this device.</div>
             <div style={{ display: 'flex', gap: 9, marginBottom: 9 }}><Icon name="maximize" size={16} color="#a5b4fc" /> The test runs in fullscreen. Leaving it is flagged.</div>
-            <div style={{ display: 'flex', gap: 9 }}><Icon name="gauge" size={16} color="#a5b4fc" /> Tab switches, copy/paste &amp; more lower your score.</div>
+            <div style={{ display: 'flex', gap: 9, marginBottom: 12 }}><Icon name="gauge" size={16} color="#a5b4fc" /> Tab switches, copy/paste &amp; more lower your score.</div>
+            <details>
+              <summary style={{ cursor: 'pointer', color: '#a5b4fc' }}>What is stored about me?</summary>
+              <div style={{ marginTop: 10 }}><ProctoringConsent dark /></div>
+            </details>
           </div>
           <button className="btn btn-primary btn-lg btn-block" onClick={begin}>
             <Icon name="play" size={17} /> Begin test in fullscreen

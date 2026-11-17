@@ -1,70 +1,78 @@
-import express from 'express';
-import cors from 'cors';
-import { fileURLToPath } from 'node:url';
-import { dirname, join } from 'node:path';
-import { existsSync } from 'node:fs';
-import { config } from './config.js';
-import './db.js';
-import { seedIfEmpty } from './seedData.js';
-import authRoutes from './routes/auth.js';
-import testRoutes from './routes/tests.js';
-import attemptRoutes from './routes/attempts.js';
-import adminRoutes from './routes/admin.js';
+import { config, checkConfig } from './config.js';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const distDir = join(__dirname, '..', '..', 'frontend', 'dist');
-
-const app = express();
-
-app.use(
-  cors({
-    origin: (origin, cb) => {
-      // Allow non-browser tools (no origin) and configured origins.
-      if (!origin || config.clientOrigins.includes(origin)) return cb(null, true);
-      return cb(null, true); // permissive in dev; tighten for production
-    },
-  })
-);
-app.use(express.json({ limit: '1mb' }));
-
-app.get('/api/health', (req, res) => res.json({ ok: true, service: 'proctorcode-api' }));
-
-app.use('/api/auth', authRoutes);
-app.use('/api/tests', testRoutes);
-app.use('/api/attempts', attemptRoutes);
-app.use('/api/admin', adminRoutes);
-
-// Unmatched API routes -> JSON 404
-app.use('/api', (req, res) => res.status(404).json({ error: 'Not found' }));
-
-// ---- Serve the built React app (single-service production deploy) ----
-const hasBuild = existsSync(join(distDir, 'index.html'));
-if (hasBuild) {
-  app.use(express.static(distDir));
-  // SPA fallback: send index.html for any non-API route so client routing works.
-  app.get('*', (req, res) => res.sendFile(join(distDir, 'index.html')));
-} else {
-  app.get('/', (req, res) =>
-    res.json({ service: 'proctorcode-api', note: 'Frontend build not found. Run the Vite dev server, or build the frontend.' })
-  );
+const { errors, warnings } = checkConfig(config);
+for (const w of warnings) console.warn(`  ! ${w}`);
+if (errors.length) {
+  console.error(`\nProctorCode will not start (NODE_ENV=${config.nodeEnv}):`);
+  for (const e of errors) console.error(`  ✗ ${e}`);
+  console.error('');
+  process.exit(1);
 }
 
-// eslint-disable-next-line no-unused-vars
-app.use((err, req, res, next) => {
-  console.error(err);
-  res.status(500).json({ error: 'Internal server error' });
-});
+// Loaded after the check so a bad configuration never touches the database.
+const { db, now } = await import('./db.js');
+const { createApp, distDir } = await import('./app.js');
+const { ensureOwnerAdmin, disableLegacyAccounts, resetDemoIfDue } = await import('./seedData.js');
+const { closeOverdueAttempts } = await import('./routes/attempts.js');
+const { existsSync } = await import('node:fs');
+const { join } = await import('node:path');
 
-// Auto-seed demo data on first boot (e.g. on ephemeral cloud disks).
-try {
-  const seeded = seedIfEmpty((m) => console.log(m));
-  if (seeded) console.log('  Demo accounts ready (admin@proctorcode.dev / candidate@proctorcode.dev).');
-} catch (e) {
-  console.error('Seed-on-start failed:', e.message);
+const log = (m) => console.log(m);
+
+await disableLegacyAccounts(log);
+await ensureOwnerAdmin(log);
+if (config.demoMode) {
+  resetDemoIfDue(log);
+  console.log(`  ✓ Public demo mode is ON (demo data resets every ${config.demoResetHours} h)`);
+}
+const admins = db.prepare("SELECT COUNT(*) AS c FROM users WHERE role = 'admin' AND is_demo = 0").get().c;
+if (!admins) {
+  console.warn('  ! No admin account yet. Set ADMIN_EMAIL and ADMIN_PASSWORD (on Render: Environment tab), then redeploy.');
 }
 
-app.listen(config.port, () => {
-  console.log(`\n  ProctorCode running on http://localhost:${config.port}`);
-  console.log(`  API health: http://localhost:${config.port}/api/health`);
-  console.log(`  Frontend build served: ${hasBuild ? 'yes' : 'no (dev mode)'}\n`);
+// Housekeeping: close timed-out attempts and drop expired sessions.
+setInterval(() => {
+  try {
+    closeOverdueAttempts();
+    db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(now());
+  } catch (e) {
+    console.error('Housekeeping failed:', e.message);
+  }
+}, 60_000).unref();
+
+if (config.demoMode) {
+  setInterval(() => {
+    try {
+      resetDemoIfDue(log);
+    } catch (e) {
+      console.error('Demo reset failed:', e.message);
+    }
+  }, 10 * 60_000).unref();
+}
+
+const app = createApp();
+const server = app.listen(config.port, config.host, (err) => {
+  if (err) {
+    console.error(`Could not start the server: ${err.message}`);
+    process.exit(1);
+  }
+  const { port } = server.address();
+  console.log(`\n  ProctorCode running on http://localhost:${port}`);
+  console.log(`  Database: ${config.dbPath}`);
+  console.log(`  Frontend build served: ${existsSync(join(distDir, 'index.html')) ? 'yes' : 'no (dev mode)'}\n`);
 });
+
+function shutdown(signal) {
+  console.log(`  ${signal} received, shutting down…`);
+  server.close(() => {
+    try {
+      db.close();
+    } catch {
+      /* already closed */
+    }
+    process.exit(0);
+  });
+  setTimeout(() => process.exit(0), 5000).unref();
+}
+process.on('SIGTERM', () => shutdown('SIGTERM'));
+process.on('SIGINT', () => shutdown('SIGINT'));

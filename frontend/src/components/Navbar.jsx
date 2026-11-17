@@ -16,8 +16,8 @@ export default function Navbar() {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout().catch(() => {});
     navigate('/login');
   };
 
@@ -42,6 +42,7 @@ export default function Navbar() {
                   <NavLink to="/admin" end className="nav-link">Overview</NavLink>
                   <NavLink to="/admin/tests" className="nav-link">Tests</NavLink>
                   <NavLink to="/admin/attempts" className="nav-link">Sessions</NavLink>
+                  <NavLink to="/admin/access" className="nav-link">Invites</NavLink>
                 </>
               ) : (
                 <>
@@ -54,12 +55,16 @@ export default function Navbar() {
             <div className="nav-user">
               <div style={{ textAlign: 'right', lineHeight: 1.2 }}>
                 <div style={{ fontWeight: 600, fontSize: '0.85rem' }}>{user.name}</div>
-                <div className="faint" style={{ fontSize: '0.72rem', textTransform: 'capitalize' }}>
-                  {user.role === 'admin' ? 'Administrator' : 'Candidate'}
+                <div className="faint" style={{ fontSize: '0.72rem' }}>
+                  {user.demo ? (isAdmin ? 'Demo admin · read-only' : 'Demo candidate') : isAdmin ? 'Administrator' : 'Candidate'}
                 </div>
               </div>
-              <div className="avatar" title={user.email}>{initials(user.name)}</div>
-              <button className="btn btn-ghost btn-sm" onClick={handleLogout} title="Sign out">
+              {user.demo ? (
+                <div className="avatar" title={user.name}>{initials(user.name)}</div>
+              ) : (
+                <Link to="/account" className="avatar" title="Account and password">{initials(user.name)}</Link>
+              )}
+              <button className="btn btn-ghost btn-sm" onClick={handleLogout} title="Sign out" aria-label="Sign out">
                 <Icon name="logout" size={15} />
               </button>
             </div>
